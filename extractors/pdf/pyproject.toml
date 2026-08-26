@@ -1,0 +1,38 @@
+[project]
+name = "refinedgaw-pdf-extractor"
+version = "0.1.0"
+description = "Reproduce the RefinedGAW Unlimited-OCR PDF extraction pipeline"
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "httpx>=0.28,<1",
+    "openai>=2.17,<3",
+    "pymupdf==1.27.2.2",
+]
+
+[project.scripts]
+refinedgaw-extract-pdf = "refinedgaw_pdf.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4,<9",
+    "ruff>=0.12,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/refinedgaw_pdf"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
