@@ -1,7 +1,7 @@
 # RefinedGAW Rehydrate
 
-This repository contains tools for retrieving currently public source documents referenced by the [RefinedGAW](https://hf.co/datasets/ellamind/RefinedGAW) metadata index.
-It also contains the HTML and PDF extraction pipelines used to compare newly extracted text with the identifiers stored in RefinedGAW.
+This repository contains tools for retrieving current public source documents referenced by the [RefinedGAW](https://hf.co/datasets/ellamind/RefinedGAW) metadata index.
+Optional extractors can process downloaded HTML pages and PDFs using the methods applied when RefinedGAW was built.
 
 The repository does not contain archived HTML, PDF files, or extracted source text from the German Academic Web.
 The downloader accesses only current public URLs.
@@ -14,8 +14,8 @@ The downloader accesses only current public URLs.
 - Internet access for document retrieval
 
 Downloading HTML and PDF files does not require a GPU.
-HTML text extraction runs on CPU.
-PDF text extraction requires an OpenAI-compatible vLLM server running the pinned Unlimited-OCR model.
+HTML extraction runs on CPU.
+PDF extraction requires an OpenAI-compatible vLLM server running the pinned Unlimited-OCR model.
 
 ## Installation
 
@@ -26,16 +26,16 @@ uv sync --frozen
 uv run --frozen refinedgaw --help
 ```
 
-The project targets macOS and Linux with Python 3.11 or later.
+The project supports macOS and Linux.
 
-## Retrieve a few RefinedGAW documents
+## Retrieve documents
 
-### 1. Select records from the metadata index
+### 1. Select records
 
-The downloader accepts JSONL files, Parquet files, and directories containing Parquet files.
+The downloader accepts JSONL files, Parquet files, and directories of Parquet files.
 Each record must contain an `id` and at least one source URL.
 
-The following example selects two HTML records and writes the fields needed by the downloader.
+This example selects two HTML records from the RefinedGAW metadata index.
 Save it as `select_records.py`.
 
 ```python
@@ -62,7 +62,7 @@ with open("records.jsonl", "w", encoding="utf-8") as output:
         output.write(json.dumps(record, ensure_ascii=False) + "\n")
 ```
 
-Run the selection script with the `datasets` package in a temporary uv environment.
+Run the script with the `datasets` package in a temporary uv environment.
 
 ```bash
 uv run --with datasets select_records.py
@@ -71,10 +71,10 @@ uv run --with datasets select_records.py
 For PDFs, use the `pdf` configuration and include `pdf_sha256` in the selected columns and output records.
 The downloader uses this digest to report whether a retrieved PDF is byte-identical to the archived file.
 
-Annotations can be used before `take()` to select records by language, content property, length, or another metadata field.
-See the RefinedGAW dataset card for the complete schema.
+You can filter the streamed dataset before `take()` to select records by language, content annotation, document length, or another metadata field.
+See the RefinedGAW dataset card for the complete dataset schema.
 
-### 2. Download the selected sources
+### 2. Download current sources
 
 ```bash
 uv run --frozen refinedgaw download records.jsonl \
@@ -83,20 +83,33 @@ uv run --frozen refinedgaw download records.jsonl \
 ```
 
 Use `--format pdf` for records selected from the PDF configuration.
-The format override is required when the input does not contain a `format` column.
+The format override is required when the input does not contain a `format` field.
+
+The downloader attempts the primary URL first, followed by alternative URLs in reverse timestamp order.
+It tries at most three URLs per record by default.
+
+### 3. Read the results
 
 The output directory contains:
 
 - `content/` with content-addressed downloaded files
-- `results.jsonl` with one final result for each input record
+- `results.jsonl` with one final result for each processed record
 - `state.sqlite3` with resumable item, attempt, and `robots.txt` state
 - `run-manifest.json` with the tool version, configuration, and outcome counts
 
-For a successful record, `selected.local_path` in `results.jsonl` points to its file under `content/`.
-Failures remain in `results.jsonl` with categories such as `missing`, `robots_denied`, `dns_error`, or `timeout`.
+For a successful record, `selected.local_path` in `results.jsonl` points to the downloaded file under `content/`.
+The selected attempt also records the final URL, HTTP status, content type, byte count, SHA-256 digest, redirects, and elapsed time.
+For PDFs with an expected digest, `selected.pdf_byte_match` reports whether the downloaded bytes match the archived file.
 
-Running the same command again with the same output directory resumes the run and skips completed records.
-Add `--retry-failures` to attempt completed failures again.
+Failed records remain in `results.jsonl` with statuses such as `missing`, `robots_denied`, `dns_error`, or `timeout`.
+The `attempts` field records the outcome for every URL that was tried.
+
+## Resume or retry a run
+
+Run the same command again with the same output directory to resume.
+Completed records are skipped.
+
+Add `--retry-failures` to retry completed failures.
 
 ```bash
 uv run --frozen refinedgaw download records.jsonl \
@@ -105,14 +118,55 @@ uv run --frozen refinedgaw download records.jsonl \
   --retry-failures
 ```
 
-Use `--limit N` to process only the first `N` input records.
-Use `--max-urls-per-record N` to control how many primary and alternative URLs are attempted.
-Multiple input files can be supplied in one command so that they share rate limits and the `robots.txt` cache.
-Run `uv run --frozen refinedgaw download --help` for all downloader options.
+An interrupted record is processed again when the command resumes.
 
-## Downloader behavior
+## Input fields
 
-The downloader applies the following rules:
+| Field | Required | Description |
+|:---|:---:|:---|
+| `id` or `record_id` | Yes | RefinedGAW text identifier |
+| `format` | Unless `--format` is used | `html` or `pdf` |
+| `url` | Unless `url_candidates` is present | Primary source URL |
+| `alt_urls` | No | Alternative URLs as strings or objects with `url` and `timestamp` |
+| `url_candidates` | No | Precomputed URL list used instead of `url` and `alt_urls` |
+| `pdf_sha256` | No | Expected PDF byte digest |
+| `timestamp` or `source_timestamp` | No | Source capture timestamp retained in the result |
+
+Duplicate candidate URLs are removed.
+The downloader rejects records without an identifier or a valid format.
+
+## Download options
+
+Run `uv run --frozen refinedgaw download --help` for the complete command reference.
+The main options are:
+
+| Option | Default | Purpose |
+|:---|---:|:---|
+| `--format` | Input value | Set every input record to `html` or `pdf` |
+| `--limit` | All records | Process only the first N records |
+| `--concurrency` | 16 | Set the maximum number of concurrent record workers |
+| `--requests-per-minute` | 30 | Limit requests per registrable domain, including `robots.txt` |
+| `--min-interval` | 1 second | Set the minimum delay between requests to a registrable domain |
+| `--max-urls-per-record` | 3 | Limit the candidate URLs tried for each record |
+| `--connect-timeout` | 10 seconds | Set the connection timeout |
+| `--read-timeout` | 60 seconds | Set the response read timeout |
+| `--retries` | 2 | Set transient-failure retries from 0 to 5 |
+| `--max-retry-delay` | 60 seconds | Bound server-supplied `Retry-After` delays |
+| `--max-redirects` | 8 | Limit redirects for one request |
+| `--max-html-mb` | 20 MB | Limit downloaded HTML size |
+| `--max-pdf-mb` | 200 MB | Limit downloaded PDF size |
+| `--robots-cache-hours` | 24 hours | Cache successful `robots.txt` checks |
+| `--robots-failure-cache-minutes` | 15 minutes | Cache failed `robots.txt` checks |
+| `--user-agent` | Tool name and version | Set the request user agent |
+| `--retry-failures` | Off | Retry failures already recorded in the output directory |
+| `--allow-nonstandard-ports` | Off | Allow public HTTP or HTTPS destinations outside ports 80 and 443 |
+
+Multiple input paths can be supplied in one command.
+They share rate limits, downloader state, and the `robots.txt` cache.
+
+## Downloader access rules
+
+The downloader applies these rules:
 
 - Only public HTTP and HTTPS destinations are allowed
 - DNS results and every redirect target are checked before access
@@ -121,19 +175,15 @@ The downloader applies the following rules:
 - `Crawl-delay`, `Request-rate`, and bounded `Retry-After` values are honored
 - Downloads are streamed with configurable size and timeout limits
 - Cookies, credentials, authentication, environment proxies, and automatic redirects are disabled
-- Primary and alternative URLs are attempted in deterministic order
 - PDF byte hashes are checked when `pdf_sha256` is present
 
-The default limit is 30 requests per minute per registrable domain, with at least one second between requests.
-Requests for `robots.txt` count toward the same limit.
 Use `--user-agent` to identify your deployment and provide contact information when appropriate.
 
-## Extract HTML text
+## Optional HTML extraction
 
-Downloading a source and reproducing the RefinedGAW text extraction are separate steps.
-Users who only need the current source files can stop after downloading them.
+Users who only need current source files can stop after downloading them.
 
-The HTML extractor uses Trafilatura 2.0.0 with the production RefinedGAW settings.
+The HTML extractor uses Trafilatura 2.0.0 with the RefinedGAW extraction settings.
 It runs on CPU.
 
 ```bash
@@ -146,9 +196,10 @@ uv run --frozen refinedgaw-extract-html \
 ```
 
 The output contains extracted UTF-8 text under `texts/`, one result per downloaded HTML record in `results.jsonl`, and a reproducibility manifest in `run-manifest.json`.
-Each result reports whether the new text identifier matches the RefinedGAW identifier.
+Each result reports whether the newly extracted text identifier matches the identifier stored in RefinedGAW.
+See `extractors/html/README.md` for the exact settings.
 
-## Extract PDF text
+## Optional PDF extraction
 
 The PDF extractor renders pages at 300 dpi and sends them to an OpenAI-compatible vLLM server.
 It uses `baidu/Unlimited-OCR` revision `27a5997fa0524f9adcf9e2f3d5e7d3f784434fa5`.
@@ -163,102 +214,13 @@ uv run --frozen refinedgaw-extract-pdf \
   --api-base http://127.0.0.1:8103/v1
 ```
 
-The repository includes `extractors/pdf/run_slurm.sh` for launching the pinned model and running extraction on Slurm.
-The script requires `PDF_RESULTS`, `PDF_OUTPUT`, and `VLLM_IMAGE`.
-Cluster-specific partition, account, QoS, and GPU options must be passed to `sbatch`.
+Completed documents are checkpointed and skipped when the command resumes.
+The output contains extracted text under `texts/`, one result per downloaded PDF in `results.jsonl`, and a reproducibility manifest in `run-manifest.json`.
+Character-for-character reproduction can vary across GPU classes, vLLM versions, and batching configurations.
+The result records the observed identifier match.
 
-PDF extraction supports deterministic input-order sharding with `--shard-count` and `--shard-index`.
-Completed documents are checkpointed and skipped when a run resumes.
-Use `experiments.merge_pdf_extractions` to combine completed shard outputs.
-
-Character-for-character reproduction can change across GPU classes, vLLM versions, or batching configurations even with the same model revision.
-The result files record the observed match.
-
-## Input fields
-
-The downloader reads the following fields from JSONL or Parquet records.
-
-| Field | Required | Description |
-|:---|:---:|:---|
-| `id` or `record_id` | Yes | RefinedGAW text identifier |
-| `format` | Unless `--format` is used | `html` or `pdf` |
-| `url` | Yes, unless `url_candidates` is present | Primary source URL |
-| `alt_urls` | No | Alternative URLs as strings or objects with `url` and `timestamp` |
-| `url_candidates` | No | Precomputed URL list used instead of `url` and `alt_urls` |
-| `pdf_sha256` | No | Expected PDF byte digest |
-| `timestamp` | No | Source capture timestamp |
-| `quality_score` | No | RefinedGAW convenience score retained in results |
-| `release_rank` | No | Release rank retained in results |
-| `sample_rank` | No | Experiment sample rank retained in results |
-
-The downloader attempts at most three URLs per record by default.
-Alternative URLs are ordered by timestamp and URL before this limit is applied.
-
-## Experiment utilities
-
-The `experiments` package contains the commands used for the source-availability analysis in the RefinedGAW paper.
-They are not required for ordinary document retrieval.
-
-### Sample the quality-ranking groups
-
-```bash
-uv run --frozen python -m experiments.sample_rank_strata release-data/html \
-  --format html \
-  --per-stratum 5000 \
-  --top-fraction 0.1 \
-  --seed refinedgaw-source-availability-v1 \
-  --output html-sample.jsonl
-```
-
-Add `--include-text` only when archived text is available for internal evaluation.
-The command writes a manifest next to the sample.
-
-### Interleave samples
-
-```bash
-uv run --frozen python -m experiments.interleave_samples \
-  html-sample.jsonl pdf-sample.jsonl \
-  --output combined-sample.jsonl
-```
-
-The command produces a deterministic order from the supplied seed and rejects duplicate format and record identifier pairs.
-
-### Summarize downloads
-
-```bash
-uv run --frozen python -m experiments.summarize_downloads \
-  downloads/results.jsonl \
-  --output download-summary.json
-```
-
-The summary validates the expected group sizes, reports group-specific and population-weighted outcomes, computes bootstrap confidence intervals, and reports recovery by crawl date.
-
-### Summarize download and extraction outcomes
-
-```bash
-uv run --frozen python -m experiments.summarize_rehydration \
-  downloads/results.jsonl \
-  downloads/html-extraction/results.jsonl \
-  downloads/pdf-extraction/results.jsonl \
-  --output rehydration-summary.json
-```
-
-Pass internal evaluation samples with `--expected-records` to add normalized five-word-shingle Jaccard recovery and PDF byte-match results.
-
-### Merge PDF extraction shards
-
-```bash
-uv run --frozen python -m experiments.merge_pdf_extractions \
-  downloads/results.jsonl \
-  downloads/pdf-shards/shard-* \
-  --expected-shards 8 \
-  --output downloads/pdf-extraction/results.jsonl \
-  --manifest-output downloads/pdf-extraction/run-manifest.json
-```
-
-This command verifies shard count, extraction coverage, duplicate records, and extraction configuration before writing the merged result and manifest.
-
-Run any experiment module with `--help` for its complete arguments.
+The repository includes `extractors/pdf/run_slurm.sh` for launching the pinned model and extractor on Slurm.
+See `extractors/pdf/README.md` for its requirements and usage.
 
 ## Development checks
 
@@ -270,7 +232,7 @@ uv run --frozen pytest
 uv run --frozen ruff check .
 ```
 
-The HTML and PDF extractor projects have separate locked environments and test suites.
+The HTML and PDF extractor projects have separate environments and test suites.
 
 ```bash
 cd extractors/html
@@ -289,7 +251,7 @@ uv run --frozen ruff check .
 ## Limitations and user responsibilities
 
 Retrieval depends on current source availability, DNS, `robots.txt`, rate limits, and server behavior.
-A record in RefinedGAW may no longer be retrievable.
+A RefinedGAW record may no longer be retrievable.
 A retrieved page may differ from the archived capture.
 
 The tool does not grant rights to source documents and does not bypass access controls.

@@ -77,7 +77,6 @@ def record_from_mapping(
             character not in "0123456789abcdef" for character in expected_pdf_sha256
         ):
             raise ValueError(f"Record {record_id!r} has an invalid pdf_sha256")
-    quality_score = row.get("quality_score")
     return SourceRecord(
         record_id=record_id,
         format=format_name,
@@ -85,14 +84,6 @@ def record_from_mapping(
         expected_pdf_sha256=expected_pdf_sha256,
         source_timestamp=_clean_string(
             row.get("timestamp") or row.get("source_timestamp")
-        ),
-        quality_score=int(quality_score) if quality_score is not None else None,
-        stratum=_clean_string(row.get("stratum")),
-        release_rank=(
-            int(row["release_rank"]) if row.get("release_rank") is not None else None
-        ),
-        sample_rank=(
-            int(row["sample_rank"]) if row.get("sample_rank") is not None else None
         ),
     )
 
@@ -125,10 +116,6 @@ def _parquet_rows(path: Path) -> Iterable[Mapping[str, Any]]:
         "timestamp",
         "source_timestamp",
         "pdf_sha256",
-        "quality_score",
-        "stratum",
-        "release_rank",
-        "sample_rank",
     }
     columns = [name for name in dataset.schema.names if name in wanted]
     if not ({"id", "record_id"} & set(columns)):

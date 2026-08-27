@@ -2,6 +2,10 @@ version = 1
 revision = 3
 requires-python = ">=3.11, <3.15"
 
+[options]
+exclude-newer = "2026-08-22T07:30:15.997751Z"
+exclude-newer-span = "P5D"
+
 [[package]]
 name = "babel"
 version = "2.18.0"

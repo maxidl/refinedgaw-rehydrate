@@ -42,9 +42,6 @@ def test_extract_and_exact_match(tmp_path: Path) -> None:
                 "expected_text_id": expected_id,
                 "format": "html",
                 "status": "downloaded",
-                "stratum": "top_decile",
-                "release_rank": 1,
-                "sample_rank": 1,
                 "selected": {"local_path": source_path.name},
             }
         )

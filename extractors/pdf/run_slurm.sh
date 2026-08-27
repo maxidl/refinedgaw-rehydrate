@@ -24,20 +24,13 @@ else
     PROJECT_DIR=${REFINEDGAW_PDF_DIR:-$(cd "$(dirname "$0")" && pwd)}
 fi
 UV_BIN=${UV_BIN:-uv}
-SHARD_COUNT=${SHARD_COUNT:-1}
-SHARD_INDEX=${SHARD_INDEX:-${SLURM_ARRAY_TASK_ID:-0}}
-PORT=${PORT:-$((8103 + SHARD_INDEX))}
+PORT=${PORT:-8103}
 CONCURRENCY=${CONCURRENCY:-256}
 RENDER_WORKERS=${RENDER_WORKERS:-16}
 HF_CACHE=${HF_HOME:-${HOME}/.cache/huggingface}
-if [ "${SHARD_COUNT}" -gt 1 ]; then
-    RUN_OUTPUT=${PDF_OUTPUT}/shard-${SHARD_INDEX}-of-${SHARD_COUNT}
-else
-    RUN_OUTPUT=${PDF_OUTPUT}
-fi
-SERVER_LOG=${RUN_OUTPUT}/vllm.log
+SERVER_LOG=${PDF_OUTPUT}/vllm.log
 JOB_VENV=${SLURM_TMPDIR:-/tmp}/refinedgaw-pdf-venv
-mkdir -p "${RUN_OUTPUT}" "${HF_CACHE}"
+mkdir -p "${PDF_OUTPUT}" "${HF_CACHE}"
 
 apptainer exec --nv \
     --bind "${HF_CACHE}:/root/.cache/huggingface" \
@@ -83,9 +76,7 @@ UV_PROJECT_ENVIRONMENT="${JOB_VENV}" UV_LINK_MODE=copy \
 UV_PROJECT_ENVIRONMENT="${JOB_VENV}" UV_LINK_MODE=copy \
     "${UV_BIN}" run --frozen refinedgaw-extract-pdf \
     "${PDF_RESULTS}" \
-    --output "${RUN_OUTPUT}" \
+    --output "${PDF_OUTPUT}" \
     --api-base "http://127.0.0.1:${PORT}/v1" \
     --concurrency "${CONCURRENCY}" \
-    --render-workers "${RENDER_WORKERS}" \
-    --shard-count "${SHARD_COUNT}" \
-    --shard-index "${SHARD_INDEX}"
+    --render-workers "${RENDER_WORKERS}"

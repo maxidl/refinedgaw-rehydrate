@@ -40,9 +40,6 @@ def test_render_and_assemble_exact_match(tmp_path: Path) -> None:
         "record_id": expected_id,
         "expected_text_id": expected_id,
         "expected_pdf_sha256": "a" * 64,
-        "stratum": "top_decile",
-        "release_rank": 1,
-        "sample_rank": 1,
         "selected": {"local_path": str(pdf_path), "pdf_byte_match": True},
     }
     result = assemble_document(

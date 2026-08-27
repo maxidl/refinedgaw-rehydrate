@@ -21,10 +21,6 @@ class SourceRecord:
     url_candidates: tuple[str, ...]
     expected_pdf_sha256: str | None = None
     source_timestamp: str | None = None
-    quality_score: int | None = None
-    stratum: str | None = None
-    release_rank: int | None = None
-    sample_rank: int | None = None
 
     @property
     def key(self) -> str:

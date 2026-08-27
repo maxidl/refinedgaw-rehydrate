@@ -1,10 +1,15 @@
 # RefinedGAW PDF extractor
 
-This independent uv project reproduces the page-level Unlimited-OCR pipeline used to build RefinedGAW.
-The client renders PDF pages at 300 dpi with PyMuPDF, submits them to an OpenAI-compatible vLLM server, applies the production grounding-tag cleanup, joins successful pages in page order, and computes the archived text identifier.
+This uv project reproduces the page-level PDF extraction used to build RefinedGAW.
+The client renders pages with PyMuPDF, submits them to an OpenAI-compatible vLLM server, removes grounding tags, joins successful pages in page order, and computes the RefinedGAW text identifier.
 
 The model is fixed to `baidu/Unlimited-OCR` revision `27a5997fa0524f9adcf9e2f3d5e7d3f784434fa5`.
-The accompanying Slurm script launches the model with its required logits processor.
+The default rendering resolution is 300 dpi.
+
+## Run the extractor
+
+Start a compatible vLLM server with the pinned model and its `NGramPerReqLogitsProcessor`.
+Then install and run the client.
 
 ```bash
 uv sync --frozen
@@ -14,20 +19,46 @@ uv run --frozen refinedgaw-extract-pdf \
   --api-base http://127.0.0.1:8103/v1
 ```
 
-Completed documents are checkpointed atomically and skipped on restart.
-The final `results.jsonl` contains one extraction outcome for every downloaded PDF result.
+The input must be the `results.jsonl` produced by the RefinedGAW downloader.
+Only records with format `pdf`, status `downloaded`, and a valid `selected.local_path` are processed.
 
-For a Slurm deployment, set `PDF_RESULTS`, `PDF_OUTPUT`, and `VLLM_IMAGE`, then submit `run_slurm.sh`.
-The container must provide the pinned Unlimited-OCR-compatible vLLM runtime.
-Pass cluster-specific partition, account, QoS, and GPU constraints to `sbatch`.
-The reusable script does not set cluster-specific scheduling options.
+The output directory contains:
 
-Large runs can be distributed as a Slurm array without pre-splitting the downloader output.
-Set `SHARD_COUNT` to the array size and submit zero-based array indices, for example `sbatch --array=0-7 --export=ALL,SHARD_COUNT=8,... run_slurm.sh`.
-Each task writes to its own `shard-I-of-N` directory, and the experiment summarizer accepts all shard `results.jsonl` files as separate extraction inputs.
+- `texts/` with extracted UTF-8 text
+- `results.jsonl` with one extraction result for each downloaded PDF
+- `checkpoints/` with one atomic checkpoint per processed PDF
+- `run-manifest.json` with the model revision, configuration, and outcome counts
 
-The output records whether exact text reproduction occurs.
-Small numerical differences between inference backends or batching patterns can change equally plausible OCR formatting choices even with the same model revision and greedy decoding.
-Changing the shard count changes request batching and can change exact identifiers.
-The experimental protocol includes both the shard count and server configuration.
-Use the same GPU class and vLLM backend as the original build when exact identifiers matter.
+Running the same command again with the same output directory reuses completed checkpoints.
+The extractor rejects duplicate PDF record identifiers.
+
+Run `uv run --frozen refinedgaw-extract-pdf --help` for the complete option reference.
+Options control request concurrency, rendering workers, rendering resolution, JPEG quality, maximum output tokens, retries, and request timeout.
+
+## Run on Slurm
+
+`run_slurm.sh` starts the pinned model in an Apptainer container, waits for its health endpoint, and then runs the extractor.
+Set these variables before submission:
+
+- `PDF_RESULTS` to the downloader `results.jsonl`
+- `PDF_OUTPUT` to the extraction output directory
+- `VLLM_IMAGE` to an Unlimited-OCR-compatible Apptainer image
+
+Submit cluster-specific scheduling options through `sbatch`.
+The script does not set a partition, account, QoS, or GPU model.
+
+```bash
+sbatch \
+  --partition YOUR_PARTITION \
+  --account YOUR_ACCOUNT \
+  --export=ALL,PDF_RESULTS=/path/to/results.jsonl,PDF_OUTPUT=/path/to/output,VLLM_IMAGE=/path/to/vllm.sif \
+  run_slurm.sh
+```
+
+The optional variables `PORT`, `CONCURRENCY`, `RENDER_WORKERS`, `HF_HOME`, `UV_BIN`, and `REFINEDGAW_PDF_DIR` override the script defaults.
+
+## Reproduction limits
+
+The result records whether the extracted text identifier exactly matches the identifier stored in RefinedGAW.
+GPU class, vLLM version, and request batching can change OCR formatting even with the same model revision and greedy decoding.
+Use the original runtime configuration when character-for-character reproduction is required.

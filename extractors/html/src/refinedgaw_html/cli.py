@@ -79,9 +79,6 @@ def process_row(task: tuple[dict[str, Any], str]) -> dict[str, Any]:
     base = {
         "record_id": row.get("record_id"),
         "format": "html",
-        "stratum": row.get("stratum"),
-        "release_rank": row.get("release_rank"),
-        "sample_rank": row.get("sample_rank"),
         "source_path": str(source_path),
         "expected_text_id": row.get("expected_text_id"),
     }

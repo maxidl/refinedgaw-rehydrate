@@ -176,7 +176,7 @@ def test_download_limit_is_enforced_before_body_read(tmp_path, source_server) ->
     assert result["status"] == "too_large"
 
 
-def test_internal_error_preserves_experiment_metadata(tmp_path, monkeypatch) -> None:
+def test_internal_error_preserves_source_timestamp(tmp_path, monkeypatch) -> None:
     async def fail(*_args, **_kwargs):
         raise RuntimeError("test failure")
 
@@ -186,10 +186,6 @@ def test_internal_error_preserves_experiment_metadata(tmp_path, monkeypatch) -> 
         "html",
         ("https://example.org/",),
         source_timestamp="2014-01-02T03:04:05Z",
-        quality_score=7,
-        stratum="top_decile",
-        release_rank=11,
-        sample_rank=12,
     )
     output = tmp_path / "internal-error"
 
@@ -204,7 +200,3 @@ def test_internal_error_preserves_experiment_metadata(tmp_path, monkeypatch) -> 
     result = _results(output / "results.jsonl")["record"]
     assert result["status"] == "internal_error"
     assert result["source_timestamp"] == "2014-01-02T03:04:05Z"
-    assert result["quality_score"] == 7
-    assert result["stratum"] == "top_decile"
-    assert result["release_rank"] == 11
-    assert result["sample_rank"] == 12

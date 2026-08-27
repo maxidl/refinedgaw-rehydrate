@@ -153,9 +153,6 @@ def assemble_document(
     return {
         "record_id": row.get("record_id"),
         "format": "pdf",
-        "stratum": row.get("stratum"),
-        "release_rank": row.get("release_rank"),
-        "sample_rank": row.get("sample_rank"),
         "source_path": row["selected"]["local_path"],
         "expected_text_id": expected_id,
         "expected_pdf_sha256": row.get("expected_pdf_sha256"),
@@ -172,13 +169,7 @@ def assemble_document(
     }
 
 
-def downloaded_pdf_rows(
-    path: Path, *, shard_index: int = 0, shard_count: int = 1
-) -> list[dict[str, Any]]:
-    if shard_count < 1:
-        raise ValueError("shard_count must be positive")
-    if not 0 <= shard_index < shard_count:
-        raise ValueError("shard_index must be in [0, shard_count)")
+def downloaded_pdf_rows(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     with path.open(encoding="utf-8") as source:
@@ -203,15 +194,11 @@ def downloaded_pdf_rows(
             row = dict(row)
             row["selected"] = {**selected, "local_path": str(resolved)}
             rows.append(row)
-    return rows[shard_index::shard_count]
+    return rows
 
 
 async def run_async(args: argparse.Namespace) -> dict[str, Any]:
-    rows = downloaded_pdf_rows(
-        args.results,
-        shard_index=args.shard_index,
-        shard_count=args.shard_count,
-    )
+    rows = downloaded_pdf_rows(args.results)
     args.output.mkdir(parents=True, exist_ok=True)
     checkpoints = args.output / "checkpoints"
     checkpoints.mkdir(parents=True, exist_ok=True)
@@ -254,9 +241,6 @@ async def run_async(args: argparse.Namespace) -> dict[str, Any]:
                 result = {
                     "record_id": record_id,
                     "format": "pdf",
-                    "stratum": row.get("stratum"),
-                    "release_rank": row.get("release_rank"),
-                    "sample_rank": row.get("sample_rank"),
                     "source_path": row["selected"]["local_path"],
                     "expected_text_id": row.get("expected_text_id"),
                     "expected_pdf_sha256": row.get("expected_pdf_sha256"),
@@ -322,8 +306,6 @@ async def run_async(args: argparse.Namespace) -> dict[str, Any]:
             "max_tokens": args.max_tokens,
             "retries": args.retries,
             "timeout": args.timeout,
-            "shard_index": args.shard_index,
-            "shard_count": args.shard_count,
         },
         "outcome_counts": dict(sorted(counts.items())),
         "exact_text_matches": sum(
@@ -348,28 +330,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-tokens", type=int, default=8192)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=1200)
-    parser.add_argument(
-        "--shard-count",
-        type=int,
-        default=1,
-        help="Split downloaded PDFs into this many deterministic input-order shards",
-    )
-    parser.add_argument(
-        "--shard-index",
-        type=int,
-        default=0,
-        help="Zero-based shard to process",
-    )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    for name in ("concurrency", "render_workers", "dpi", "retries", "shard_count"):
+    for name in ("concurrency", "render_workers", "dpi", "retries"):
         if getattr(args, name) < 1:
             raise SystemExit(f"--{name.replace('_', '-')} must be positive")
-    if not 0 <= args.shard_index < args.shard_count:
-        raise SystemExit("--shard-index must be in [0, --shard-count)")
     manifest = asyncio.run(run_async(args))
     print(json.dumps(manifest, indent=2, sort_keys=True))
     return 0
