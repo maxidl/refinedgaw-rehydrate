@@ -68,7 +68,7 @@ def record_from_mapping(
     format_name = format_override or _clean_string(row.get("format"))
     if format_name not in {"html", "pdf"}:
         raise ValueError(
-            f"Record {record_id!r} has no valid format; use --format html|pdf"
+            f"Record {record_id!r} has no valid format. Use --format html|pdf"
         )
     expected_pdf_sha256 = _clean_string(row.get("pdf_sha256"))
     if expected_pdf_sha256 is not None:

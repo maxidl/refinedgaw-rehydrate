@@ -31,12 +31,24 @@ def build_parser() -> argparse.ArgumentParser:
     download = subparsers.add_parser(
         "download",
         help="Download source content referenced by RefinedGAW records",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    download.add_argument("input", type=Path, nargs="+")
-    download.add_argument("--output", type=Path, required=True)
-    download.add_argument("--format", choices=("html", "pdf"))
-    download.add_argument("--limit", type=positive_int)
-    download.add_argument("--concurrency", type=positive_int, default=16)
+    download.add_argument("input", type=Path, nargs="+", help="JSONL or Parquet paths")
+    download.add_argument(
+        "--output", type=Path, required=True, help="Download directory"
+    )
+    download.add_argument(
+        "--format", choices=("html", "pdf"), help="Override the input format field"
+    )
+    download.add_argument(
+        "--limit", type=positive_int, help="Process the first N records"
+    )
+    download.add_argument(
+        "--concurrency",
+        type=positive_int,
+        default=16,
+        help="Concurrent download workers",
+    )
     download.add_argument(
         "--requests-per-minute",
         type=positive_int,
@@ -49,24 +61,66 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="Minimum seconds between requests to a registrable domain",
     )
-    download.add_argument("--max-urls-per-record", type=positive_int, default=3)
-    download.add_argument("--connect-timeout", type=positive_int, default=10)
-    download.add_argument("--read-timeout", type=positive_int, default=60)
-    download.add_argument("--retries", type=int, choices=range(0, 6), default=2)
+    download.add_argument(
+        "--max-urls-per-record",
+        type=positive_int,
+        default=3,
+        help="Maximum candidate URLs per record",
+    )
+    download.add_argument(
+        "--connect-timeout",
+        type=positive_int,
+        default=10,
+        help="Connection timeout in seconds",
+    )
+    download.add_argument(
+        "--read-timeout",
+        type=positive_int,
+        default=60,
+        help="Response read timeout in seconds",
+    )
+    download.add_argument(
+        "--retries",
+        type=int,
+        choices=range(0, 6),
+        default=2,
+        help="Retries for transient failures",
+    )
     download.add_argument(
         "--max-retry-delay",
         type=positive_int,
         default=60,
         help="Maximum seconds to honor a server-supplied Retry-After value",
     )
-    download.add_argument("--max-redirects", type=positive_int, default=8)
-    download.add_argument("--max-html-mb", type=positive_int, default=20)
-    download.add_argument("--max-pdf-mb", type=positive_int, default=200)
-    download.add_argument("--robots-cache-hours", type=positive_int, default=24)
+    download.add_argument(
+        "--max-redirects",
+        type=positive_int,
+        default=8,
+        help="Maximum redirects per request",
+    )
+    download.add_argument(
+        "--max-html-mb",
+        type=positive_int,
+        default=20,
+        help="Maximum HTML download size in MiB",
+    )
+    download.add_argument(
+        "--max-pdf-mb",
+        type=positive_int,
+        default=200,
+        help="Maximum PDF download size in MiB",
+    )
+    download.add_argument(
+        "--robots-cache-hours",
+        type=positive_int,
+        default=24,
+        help="Cache duration for successful robots.txt checks",
+    )
     download.add_argument(
         "--robots-failure-cache-minutes",
         type=positive_int,
         default=15,
+        help="Cache duration for failed robots.txt checks",
     )
     download.add_argument(
         "--user-agent",
@@ -139,7 +193,7 @@ def main() -> int:
         if args.command == "download":
             return run_download_command(args)
     except KeyboardInterrupt:
-        parser.exit(130, "Interrupted; progress remains resumable.\n")
+        parser.exit(130, "Interrupted. Run the same command to resume.\n")
     except (FileNotFoundError, ValueError, RuntimeError) as error:
         parser.exit(2, f"error: {error}\n")
     raise AssertionError(args.command)

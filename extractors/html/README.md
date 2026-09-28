@@ -1,7 +1,7 @@
 # RefinedGAW HTML extractor
 
-This independent uv project reproduces the HTML text extraction used to build RefinedGAW.
-It uses the production Trafilatura version and arguments, applies the production minimum-length criterion, and computes the same 128-bit truncated SHA-256 text identifier.
+Extract text from downloaded HTML using the RefinedGAW settings and compare its identifier with the archived extraction.
+Run from `extractors/html`:
 
 ```bash
 uv sync --frozen
@@ -13,7 +13,7 @@ uv run --frozen refinedgaw-extract-html \
 The input is the downloader's `results.jsonl` file.
 The output directory contains extracted UTF-8 text under `texts/`, one result per downloaded HTML record in `results.jsonl`, and a reproducibility manifest in `run-manifest.json`.
 
-The extractor uses these production settings:
+Extraction settings:
 
 - Trafilatura 2.0.0
 - `output_format="txt"`
